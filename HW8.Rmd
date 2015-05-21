@@ -1,0 +1,102 @@
+---
+title: "HW8"
+author: "Sebastian Caldas"
+date: "May 21, 2015"
+output: html_document
+---
+
+```{r, echo=FALSE, message=FALSE}
+library(lubridate)
+library(dplyr)
+library(ggplot2)
+library(caret)
+```
+
+This Markdown will be a simple one, answering the suggested questions by the Kaggle competition and briefly describing the process that led to the models selected for submission. The process will be presented as a journal, briefly showing the thought process that led to each day's particular submissions. Firstly, let's show the "journal":
+
+1. Monday was the first day of work, and it was all about naive approaches. The first important insight was that the date by itself meant nothing, and more relevant information could be derived from it. The two pieces of information that could be obtained were day of the week (Monday, Tuesday, etc.) and month. Both derivations were straightforward using lubridate. The models submitted were the following:
+    + A multiple lineal regression depending only on day of the week. The results were not good according to Kaggle.
+    + A multiple lineal regression depending on day of the week and restaurant count. This other variable was chosen based on 1.png, where the cloud of dots suggest a correlation between restaurant count and order count. 
+    + A multiple lineal regression depending on day of the week, restaurant count and calendar code. This last variable was added after carefully looking at the data, and seeing that this code somehow represented holidays and the like. It is to be expected fot this holidays to affect any business. As such, it was included. **This model gave the best results of the day**.
+    + A multiple lineal regression depending on the same variables as before plus month. The results deteriorated, and careful consideration shows that month will not be telling enough in this particular excercise. Although we have data for different months, but have no data of the months we wish to predict. As such, the real impact of this variable on the test data will not be known and we could be over-fitting to out testing set. 
+
+2. Tuesday was about trying to make several lineal regressions instead of just one. Particularly, the though was that a lineal regression for each different day of the week would treat business on Mondays as different from business on Tuesdays, and so on. This intuition seemed sound and the models implemented were the following:
+    + A multiple lineal regression for each day of the week. Each regression used both restaurant count and calendar code as predicting variables.
+    + A multiple lineal regression for each day of the week. Each regression used restaurant count, calendar code and precipitation as predicting variables. Precipitation was included just to start playing around with the influence of weather, but as 1.png shows, this particular variable does not seem to influence order count. **This model ended up being the best model of the day, although I don't trust it.**
+    + The same as before but with average temperature instead of precipitation as a predicting variable ($\frac{temp_{max} + temp_{min}}{2}$).
+    + The same as the two preceding but using minimum temperature instead of average temperature (it is seen in 1.png that both temperatures are related, and because the average is a function of the two, it is actually redundant). 
+3. Wednesday was about finally trying to fit weather into the predictions. The models follow this idea:
+    + The first model still makes a lineal regression for each day of the week. Each regression depends on restaurant count, calendar code and a new variable X. X is derived from "events" by making it binary: It is 0 if there was no event, and 1 if there was any. I think this variable could take into account both temperature and precipitation.
+    + The previous idea is refined a little. Instead of X being binary, it just merges the caregories with the lowest frequencies until each one has a minimum of 5 occurrences (this is based on the buckets that one uses to make a goodness of fit test, each having at least 5 occurrences). **This is the best model of the day, with similar results that the best of the second day and a model I am much more confident about**.
+    + This model makes a lineal regression for each of the categories in variable X, not for each day! Each regression depends on restaurant count and calendar code. The implementation seems flawed though, as R warns that the model is ending up as a constant for some categories. The fix was to keep merging categories until the warning disappeared. As such, the model is not trusted (and the results were not that great either).
+    + I return to a lineal regression for each day of the week and decide to divide precipitation into 11 buckets, and use the number of the bucket as a predicting variable.
+    + I use the same idea as before with average temperature. Precipitation is kept as a predicting variable. The results deteriorate considerably. 
+3. Thursay is the day of organizing results. If there is time left, other models apart from lineal regressions will be tried (using the insights already found), but they will not be described in this Markdown. 
+
+```{r, echo=FALSE}
+#Please change the file path!
+file <- '/Users/caldasrivera/Dropbox/UniAndes/Semestres Academicos/Septimo Semestre/Metodos Computacionales/Tareas/Tarea8/datos/training_set.csv'
+dat <- read.csv(file,header=T)
+dat$diasemana <- wday(as.Date(dat$fecha,'%Y-%m-%d'), label=TRUE, abbr = FALSE)
+```
+
+The following answers are taken from the testing data only:
+
+1. The day of the week with the most orders is:
+
+```{r, echo=FALSE}
+dat_by_day <- group_by(dat, diasemana)
+freq <- summarise(dat_by_day, count=sum(conteo_ordenes))
+mx <- summarise(freq, max(count))
+mx <- filter(freq, count == mx[[1]])
+mx[[1]]
+```
+
+2. The day of the week with the least orders is:
+```{r, echo=FALSE}
+dat_by_day <- group_by(dat, diasemana)
+freq <- summarise(dat_by_day, count=sum(conteo_ordenes))
+mn <- summarise(freq, min(count))
+mn <- filter(freq, count == mn[[1]])
+mn[[1]]
+```
+
+3. Other information that may have been useful:
+    + This task could have been more successful had we had information about the company: what does it produce? where does it opperate? The first question would have been especially useful, as it would have provided clues to predict peaks based on important dates. A company that produces candy will have peaks during early February and late October, while one that sells cleaning supplies may not have such variations in any months. The product or service offered would have also given insights about the relative importance of each variable. For example, if the company offers thermostat repairing services, it will be needed most in days when it snows. All of the previous examples could be hired by restaurants, and as such are plausible (if not a little far fetched) for the company we are predicting for.
+    + I also believe that, just like business on Mondays is not the same as business on Tuesdays, business in September is not the same as business in October. As such, because we were not given any training data for October, any prediction about business in that month will necessarily be off. We are asked to predict for dates in a month for which we have no information. What if the company sold gummy bears? They would have a peak in October we could not predict in any way. The example is not realistic (no gummy bears company would have clients on a day with tempeartures under zero degrees) but presents my point: we are shooting in the dark here. 
+
+```{r, echo=FALSE, warning=FALSE}
+#Please change the file path!
+file <- '/Users/caldasrivera/Dropbox/UniAndes/Semestres Academicos/Septimo Semestre/Metodos Computacionales/Tareas/Tarea8/datos/training_set.csv'
+file_submitted <- '/Users/caldasrivera/Dropbox/UniAndes/Semestres Academicos/Septimo Semestre/Metodos Computacionales/Tareas/Tarea8/datos/best_submission.csv'
+
+dat <- read.csv(file,header=T)
+dat$diasemana <- wday(as.Date(dat$fecha,'%Y-%m-%d'), label=TRUE, abbr = FALSE)
+dat <- select(dat, fecha, diasemana, conteo_ordenes)
+
+dat_submitted <- read.csv(file_submitted,header=T)
+dat_submitted$diasemana <- wday(as.Date(dat_submitted$fecha,'%Y-%m-%d'), label=TRUE, abbr = FALSE)
+
+dat <- bind_rows(dat, dat_submitted)
+```
+
+The following answers take into account the best trusted submission (the best of the third day):
+1. The day of the week with the most orders is:
+
+```{r, echo=FALSE}
+dat_by_day <- group_by(dat, diasemana)
+freq <- summarise(dat_by_day, count=sum(conteo_ordenes))
+mx <- summarise(freq, max(count))
+mx <- filter(freq, count == mx[[1]])
+mx[[1]]
+```
+
+2. The day of the week with the least orders is:
+```{r, echo=FALSE}
+dat_by_day <- group_by(dat, diasemana)
+freq <- summarise(dat_by_day, count=sum(conteo_ordenes))
+mn <- summarise(freq, min(count))
+mn <- filter(freq, count == mn[[1]])
+mn[[1]]
+```
+
